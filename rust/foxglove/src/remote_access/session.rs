@@ -8,7 +8,10 @@ use indexmap::IndexSet;
 use libwebrtc::video_source::{RtcVideoSource, native::NativeVideoSource};
 use livekit::options::TrackPublishOptions;
 use livekit::prelude::*;
-use livekit::{ByteStreamReader, Room, StreamByteOptions, id::ParticipantIdentity};
+use livekit::{
+    ByteStreamReader, Room, StreamByteOptions,
+    id::{ParticipantIdentity, ParticipantSid},
+};
 use parking_lot::RwLock;
 use smallvec::SmallVec;
 use tokio::io::AsyncReadExt;
@@ -1077,7 +1080,10 @@ impl RemoteAccessSession {
         }
     }
 
-    /// Add a participant to the server, if it hasn't already been added.
+    /// Add a participant to the server.
+    ///
+    /// If a participant with the same identity already exists (e.g. after an unclean exit and
+    /// rejoin), the old incarnation is removed first and the new one takes its place.
     ///
     /// The caller is responsible for ensuring that this method is not called concurrently for the
     /// same participant identity.
@@ -1085,14 +1091,18 @@ impl RemoteAccessSession {
     /// When a participant is added, a ServerInfo message and channel Advertisement messages are
     /// immediately queued for transmission.
     pub(crate) async fn add_participant(
-        &self,
+        self: &Arc<Self>,
         participant_id: ParticipantIdentity,
+        participant_sid: ParticipantSid,
         server_info: ServerInfo,
     ) -> Result<(), Box<RemoteAccessError>> {
         use crate::remote_access::participant::ParticipantWriter;
 
         if self.state.read().has_participant(&participant_id) {
-            return Ok(());
+            info!(
+                "participant {participant_id} already exists, replacing with new incarnation (sid={participant_sid})"
+            );
+            self.remove_participant(&participant_id);
         }
 
         let stream = match self
@@ -1114,6 +1124,7 @@ impl RemoteAccessSession {
 
         let participant = Arc::new(Participant::new(
             participant_id.clone(),
+            participant_sid,
             ParticipantWriter::Livekit(stream),
         ));
 
@@ -1199,13 +1210,19 @@ impl RemoteAccessSession {
             match event {
                 RoomEvent::ParticipantConnected(participant) => {
                     let participant_identity = participant.identity();
+                    let participant_sid = participant.sid();
                     info!(
                         remote_access_session_id,
                         participant_identity = %participant_identity,
+                        participant_sid = %participant_sid,
                         "participant connected to room"
                     );
                     if let Err(e) = self
-                        .add_participant(participant.identity(), server_info.clone())
+                        .add_participant(
+                            participant.identity(),
+                            participant_sid,
+                            server_info.clone(),
+                        )
                         .await
                     {
                         error!(remote_access_session_id, error = %e, "failed to add participant: {e}");
@@ -1213,12 +1230,33 @@ impl RemoteAccessSession {
                     }
                 }
                 RoomEvent::ParticipantDisconnected(participant) => {
+                    let participant_identity = participant.identity();
+                    let participant_sid = participant.sid();
                     info!(
                         remote_access_session_id,
-                        participant_identity = %participant.identity(),
+                        participant_identity = %participant_identity,
+                        participant_sid = %participant_sid,
                         "participant disconnected from room"
                     );
-                    self.remove_participant(&participant.identity());
+                    // Only remove the participant if the SID matches the current incarnation.
+                    // After an unclean exit + rejoin, we may receive a stale disconnect for the
+                    // old incarnation after the new one has already been added.
+                    let current_sid = self
+                        .state
+                        .read()
+                        .get_participant(&participant_identity)
+                        .map(|p| p.sid().clone());
+                    if current_sid.as_ref() == Some(&participant_sid) {
+                        self.remove_participant(&participant_identity);
+                    } else {
+                        info!(
+                            remote_access_session_id,
+                            participant_identity = %participant_identity,
+                            disconnect_sid = %participant_sid,
+                            current_sid = ?current_sid,
+                            "ignoring stale disconnect for old participant incarnation"
+                        );
+                    }
                 }
                 RoomEvent::DataReceived {
                     payload: _,
@@ -1985,9 +2023,11 @@ mod tests {
 
     fn make_participant(name: &str) -> (ParticipantIdentity, Arc<Participant>) {
         let identity = ParticipantIdentity(name.to_string());
+        let sid = ParticipantSid::try_from(format!("PA_{name}")).unwrap();
         let writer = Arc::new(TestByteStreamWriter::default());
         let participant = Arc::new(Participant::new(
             identity.clone(),
+            sid,
             ParticipantWriter::Test(writer),
         ));
         (identity, participant)

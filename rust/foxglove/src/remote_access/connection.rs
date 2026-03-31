@@ -322,9 +322,9 @@ impl RemoteAccessConnection {
         // Send ServerInfo and channel advertisements to participants already in the room.
         // ParticipantConnected events only fire for participants joining after us.
         let server_info = self.create_server_info(remote_access_session_id.unwrap_or(""));
-        for (identity, _) in session.room().remote_participants() {
+        for (identity, participant) in session.room().remote_participants() {
             if let Err(e) = session
-                .add_participant(identity.clone(), server_info.clone())
+                .add_participant(identity.clone(), participant.sid(), server_info.clone())
                 .await
             {
                 error!(

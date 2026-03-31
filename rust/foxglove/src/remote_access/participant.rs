@@ -3,6 +3,7 @@ use std::sync::Arc;
 
 #[cfg(test)]
 use bytes::Bytes;
+use livekit::id::ParticipantSid;
 use livekit::{ByteStreamWriter, StreamWriter, id::ParticipantIdentity};
 
 use crate::remote_access::RemoteAccessError;
@@ -21,9 +22,11 @@ const DEFAULT_SERVICE_CALLS_PER_PARTICIPANT: usize = 32;
 pub(crate) struct Participant {
     /// Locally-significant identifier for this particular instance of this participant.
     client_id: ClientId,
-    /// LiveKit participant ID.
+    /// LiveKit participant identity (stable across reconnects).
     participant_id: ParticipantIdentity,
-    /// A reliable, ordered stream to send messages to just this participant
+    /// LiveKit participant SID (unique per session/connection).
+    sid: ParticipantSid,
+    /// A reliable, ordered stream to send messages to just this participant.
     writer: ParticipantWriter,
     /// Limits concurrent service calls from this participant.
     service_call_sem: Semaphore,
@@ -89,10 +92,15 @@ impl ChannelWriterInner {
 
 impl Participant {
     /// Creates a new participant.
-    pub fn new(identity: ParticipantIdentity, writer: ParticipantWriter) -> Self {
+    pub fn new(
+        identity: ParticipantIdentity,
+        sid: ParticipantSid,
+        writer: ParticipantWriter,
+    ) -> Self {
         Self {
             client_id: ClientId::next(),
             participant_id: identity,
+            sid,
             writer,
             service_call_sem: Semaphore::new(DEFAULT_SERVICE_CALLS_PER_PARTICIPANT),
         }
@@ -108,9 +116,14 @@ impl Participant {
         &self.service_call_sem
     }
 
-    /// Returns the participant's identity.
+    /// Returns the participant's identity (stable across reconnects).
     pub fn participant_id(&self) -> &ParticipantIdentity {
         &self.participant_id
+    }
+
+    /// Returns the participant's session ID (unique per connection).
+    pub fn sid(&self) -> &ParticipantSid {
+        &self.sid
     }
 
     /// Sends a message to the participant.
