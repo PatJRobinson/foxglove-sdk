@@ -1607,3 +1607,8 @@ async fn livekit_connection_status_lifecycle() -> Result<()> {
 
     Ok(())
 }
+
+// Control stream write failure recovery: the poison/reset logic in run_sender
+// is straightforward (HashSet lookup + mutex push), so it is verified by code
+// review rather than unit tests. An E2E netem partition test is planned but
+// requires per-link mode infrastructure.
