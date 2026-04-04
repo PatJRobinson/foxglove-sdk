@@ -9,6 +9,7 @@
   outputs = {
     nixpkgs,
     flake-utils,
+    ...
   }:
     flake-utils.lib.eachSystem
     ["x86_64-linux" "aarch64-linux"]
@@ -17,8 +18,8 @@
         pkgs = import nixpkgs {
           inherit system;
         };
-      in
-        with pkgs;
+      in {
+        packages.default = with pkgs;
           pkgs.rustPlatform.buildRustPackage rec {
             pname = "foxglove-sdk";
             version = "0.21.0";
@@ -131,6 +132,7 @@
               license = licenses.mit;
               platforms = platforms.linux ++ platforms.darwin;
             };
-          }
+          };
+      }
     );
 }

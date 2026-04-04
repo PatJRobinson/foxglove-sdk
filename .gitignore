@@ -31,3 +31,4 @@
 /typescript/*/dist/
 /typescript/schemas/src/jsonschema/
 node_modules/
+result*
