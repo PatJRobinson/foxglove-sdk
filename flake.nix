@@ -89,6 +89,7 @@
               mkdir -p $out/include
               mkdir -p $out/src
               mkdir -p $out/lib
+              mkdir -p $out/share
 
               # C headers
               cp -r c/include/. $out/include/
@@ -99,6 +100,9 @@
 
               # Rust-built C static library
               libpath="$(find target -type f -name 'libfoxglove*.a' | head -n1)"
+
+              # Schemas
+              cp -r schemas $out/share
 
               if [ -z "$libpath" ]; then
                 echo "error: could not find built static library under target" >&2
