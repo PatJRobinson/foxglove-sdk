@@ -84,36 +84,75 @@
             # We only want the release artifacts for the C layer plus the headers/sources
             # that downstream C++ consumers compile themselves.
             installPhase = ''
-              runHook preInstall
+                runHook preInstall
 
-              mkdir -p $out/include
-              mkdir -p $out/src
-              mkdir -p $out/lib
-              mkdir -p $out/share
+                mkdir -p $out/include
+                mkdir -p $out/src
+                mkdir -p $out/lib
+                mkdir -p $out/share
+                mkdir -p $out/lib/cmake/FoxgloveSdk
 
-              # C headers
-              cp -r c/include/. $out/include/
+                # C headers
+                cp -r c/include/. $out/include/
 
-              # C++ headers/sources
-              cp -r cpp/foxglove/include/. $out/include/
-              cp -r cpp/foxglove/src/. $out/src/
+                # C++ headers/sources
+                cp -r cpp/foxglove/include/. $out/include/
+                cp -r cpp/foxglove/src/. $out/src/
 
-              # Rust-built C static library
-              libpath="$(find target -type f -name 'libfoxglove*.a' | head -n1)"
+                # Schemas
+                cp -r schemas $out/share/
 
-              # Schemas
-              cp -r schemas $out/share
+                # Rust-built C static library
+                libpath="$(find target -type f -name 'libfoxglove*.a' | head -n1)"
 
-              if [ -z "$libpath" ]; then
-                echo "error: could not find built static library under target" >&2
-                echo "available files under target:" >&2
-                find target -maxdepth 5 -type f | sort >&2 || true
-                exit 1
-              fi
+                if [ -z "$libpath" ]; then
+                  echo "error: could not find built static library under target" >&2
+                  echo "available files under target:" >&2
+                  find target -maxdepth 5 -type f | sort >&2 || true
+                  exit 1
+                fi
 
-              cp "$libpath" $out/lib/libfoxglove.a
+                cp "$libpath" "$out/lib/libfoxglove.a"
 
-              runHook postInstall
+                cat > $out/lib/cmake/FoxgloveSdk/FoxgloveSdkConfig.cmake <<'EOF'
+              include(CMakeFindDependencyMacro)
+
+              get_filename_component(_FOXGLOVE_SDK_PREFIX
+                "''${CMAKE_CURRENT_LIST_DIR}/../../.."
+                ABSOLUTE
+              )
+
+              set(FoxgloveSdk_INCLUDE_DIR "''${_FOXGLOVE_SDK_PREFIX}/include")
+              set(FoxgloveSdk_LIBRARY "''${_FOXGLOVE_SDK_PREFIX}/lib/libfoxglove.a")
+              set(FoxgloveSdk_SCHEMAS_DIR "''${_FOXGLOVE_SDK_PREFIX}/share/schemas")
+
+              file(GLOB FoxgloveSdk_SOURCES
+                "''${_FOXGLOVE_SDK_PREFIX}/src/*.cpp"
+                "''${_FOXGLOVE_SDK_PREFIX}/src/server/*.cpp"
+              )
+
+              if(NOT TARGET FoxgloveSdk::foxglove)
+                add_library(FoxgloveSdk::foxglove INTERFACE IMPORTED)
+                set_target_properties(FoxgloveSdk::foxglove PROPERTIES
+                  INTERFACE_INCLUDE_DIRECTORIES "''${_FOXGLOVE_SDK_PREFIX}/include"
+                  INTERFACE_LINK_LIBRARIES "''${_FOXGLOVE_SDK_PREFIX}/lib/libfoxglove.a"
+                )
+              endif()
+              EOF
+
+                cat > $out/lib/cmake/FoxgloveSdk/FoxgloveSdkConfigVersion.cmake <<EOF
+              set(PACKAGE_VERSION "${version}")
+              if(PACKAGE_FIND_VERSION VERSION_EQUAL PACKAGE_VERSION)
+                set(PACKAGE_VERSION_EXACT TRUE)
+                set(PACKAGE_VERSION_COMPATIBLE TRUE)
+              elseif(PACKAGE_FIND_VERSION VERSION_LESS PACKAGE_VERSION)
+                set(PACKAGE_VERSION_COMPATIBLE TRUE)
+              else()
+                set(PACKAGE_VERSION_COMPATIBLE FALSE)
+              endif()
+              EOF
+
+                runHook postInstall
             '';
 
             passthru = {
