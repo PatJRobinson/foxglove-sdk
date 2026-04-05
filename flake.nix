@@ -2,12 +2,14 @@
   description = "A nix flake for PatJRobinson's fork of foxglove-sdk";
 
   inputs = {
-    nixpkgs.url = "github:NixOS/nixpkgs/nixos-25.11";
+    nixpkgs.url = "github:NixOS/nixpkgs/nixos-22.11";
+    nixpkgs-rust.url = "github:NixOS/nixpkgs/nixos-25.11";
     flake-utils.url = "github:numtide/flake-utils";
   };
 
   outputs = {
     nixpkgs,
+    nixpkgs-rust,
     flake-utils,
     ...
   }:
@@ -18,9 +20,18 @@
         pkgs = import nixpkgs {
           inherit system;
         };
+
+        rustPkgs = import nixpkgs-rust {
+          inherit system;
+        };
+
+        rustPlatform = pkgs.makeRustPlatform {
+          cargo = rustPkgs.cargo;
+          rustc = rustPkgs.rustc;
+        };
       in {
         packages.default = with pkgs;
-          pkgs.rustPlatform.buildRustPackage rec {
+          rustPlatform.buildRustPackage rec {
             pname = "foxglove-sdk";
             version = "0.21.0";
 
@@ -31,7 +42,7 @@
               hash = "sha256-kpUsoMXoLfNvu8PYWYt5fP/9gu8/0XyJkd/qIL6p++Y=";
             };
 
-            cargoHash = "sha256-UmmTvZdCZQobHHG2OzzpzwEO7zABIz7e3l0275AfZHc=";
+            cargoHash = "sha256-7IqUjwPEj9jwuN4Mz3J6zC8O7fSApZviJDZ6H9BT8xg=";
 
             nativeBuildInputs = [
               pkg-config
@@ -39,6 +50,8 @@
               clang
               llvmPackages.libclang
               python3
+              rustPkgs.cargo
+              rustPkgs.rustc
             ];
 
             buildInputs = [
@@ -54,7 +67,6 @@
 
             AWS_LC_SYS_CFLAGS = "-Wno-restrict -Wno-error=restrict -Wno-error=stringop-overflow";
 
-            # Often helpful for bindgen on Nix so clang sees libc / C++ headers properly.
             BINDGEN_EXTRA_CLANG_ARGS =
               lib.optionalString stdenv.hostPlatform.isLinux
               "--sysroot=${stdenv.cc.libc.dev} "
@@ -81,40 +93,38 @@
               "--lib"
             ];
 
-            # We only want the release artifacts for the C layer plus the headers/sources
-            # that downstream C++ consumers compile themselves.
             installPhase = ''
-                runHook preInstall
+              runHook preInstall
 
-                mkdir -p $out/include
-                mkdir -p $out/src
-                mkdir -p $out/lib
-                mkdir -p $out/share
-                mkdir -p $out/lib/cmake/FoxgloveSdk
+              mkdir -p $out/include
+              mkdir -p $out/src
+              mkdir -p $out/lib
+              mkdir -p $out/share
+              mkdir -p $out/lib/cmake/FoxgloveSdk
 
-                # C headers
-                cp -r c/include/. $out/include/
+              # C headers
+              cp -r c/include/. $out/include/
 
-                # C++ headers/sources
-                cp -r cpp/foxglove/include/. $out/include/
-                cp -r cpp/foxglove/src/. $out/src/
+              # C++ headers/sources
+              cp -r cpp/foxglove/include/. $out/include/
+              cp -r cpp/foxglove/src/. $out/src/
 
-                # Schemas
-                cp -r schemas $out/share/
+              # Schemas
+              cp -r schemas $out/share/
 
-                # Rust-built C static library
-                libpath="$(find target -type f -name 'libfoxglove*.a' | head -n1)"
+              # Rust-built C static library
+              libpath="$(find target -type f -name 'libfoxglove*.a' | head -n1)"
 
-                if [ -z "$libpath" ]; then
-                  echo "error: could not find built static library under target" >&2
-                  echo "available files under target:" >&2
-                  find target -maxdepth 5 -type f | sort >&2 || true
-                  exit 1
-                fi
+              if [ -z "$libpath" ]; then
+                echo "error: could not find built static library under target" >&2
+                echo "available files under target:" >&2
+                find target -maxdepth 5 -type f | sort >&2 || true
+                exit 1
+              fi
 
-                cp "$libpath" "$out/lib/libfoxglove.a"
+              cp "$libpath" "$out/lib/libfoxglove.a"
 
-                cat > $out/lib/cmake/FoxgloveSdk/FoxgloveSdkConfig.cmake <<'EOF'
+              cat > $out/lib/cmake/FoxgloveSdk/FoxgloveSdkConfig.cmake <<'EOF'
               include(CMakeFindDependencyMacro)
 
               get_filename_component(_FOXGLOVE_SDK_PREFIX
@@ -140,7 +150,7 @@
               endif()
               EOF
 
-                cat > $out/lib/cmake/FoxgloveSdk/FoxgloveSdkConfigVersion.cmake <<EOF
+              cat > $out/lib/cmake/FoxgloveSdk/FoxgloveSdkConfigVersion.cmake <<EOF
               set(PACKAGE_VERSION "${version}")
               if(PACKAGE_FIND_VERSION VERSION_EQUAL PACKAGE_VERSION)
                 set(PACKAGE_VERSION_EXACT TRUE)
@@ -152,7 +162,7 @@
               endif()
               EOF
 
-                runHook postInstall
+              runHook postInstall
             '';
 
             passthru = {
