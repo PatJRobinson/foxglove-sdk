@@ -1,6 +1,6 @@
 [package]
 name = "remote_data_loader_backend_conformance"
-edition = "2024"
+edition = "2021"
 publish = false
 
 [lints]

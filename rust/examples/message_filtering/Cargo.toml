@@ -1,6 +1,6 @@
 [package]
 name = "example_message_filtering"
-edition = "2024"
+edition = "2021"
 publish = false
 
 [lints]
