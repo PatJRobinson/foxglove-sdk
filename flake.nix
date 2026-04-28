@@ -70,7 +70,7 @@
               glib
             ];
 
-            CC = 
+            CC =
               lib.optionalString stdenv.hostPlatform.isLinux
                 "${clang}/bin/clang";
 
@@ -80,7 +80,7 @@
 
             LIBCLANG_PATH = "${lib.getLib llvmPackages.libclang}/lib";
 
-            AWS_LC_SYS_CFLAGS = 
+            AWS_LC_SYS_CFLAGS =
               lib.optionalString stdenv.hostPlatform.isLinux
                 "-Wno-restrict -Wno-error=restrict -Wno-error=stringop-overflow";
 
@@ -164,6 +164,14 @@
                   INTERFACE_INCLUDE_DIRECTORIES "''${_FOXGLOVE_SDK_PREFIX}/include"
                   INTERFACE_LINK_LIBRARIES "''${_FOXGLOVE_SDK_PREFIX}/lib/libfoxglove.a"
                 )
+
+               if(APPLE)
+                set_property(TARGET FoxgloveSdk::foxglove APPEND PROPERTY
+                  INTERFACE_LINK_LIBRARIES
+                  "-framework Security"
+                  "-framework CoreFoundation"
+                )
+              endif()
               endif()
               EOF
 
