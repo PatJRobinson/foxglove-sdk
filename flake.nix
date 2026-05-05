@@ -162,6 +162,8 @@
                 add_library(FoxgloveSdk::foxglove INTERFACE IMPORTED)
                 set_target_properties(FoxgloveSdk::foxglove PROPERTIES
                   INTERFACE_INCLUDE_DIRECTORIES "''${_FOXGLOVE_SDK_PREFIX}/include"
+                  INTERFACE_SYSTEM_INCLUDE_DIRECTORIES "''${_FOXGLOVE_SDK_PREFIX}/include"
+                  INTERFACE_SOURCES "''${FoxgloveSdk_SOURCES}"
                   INTERFACE_LINK_LIBRARIES "''${_FOXGLOVE_SDK_PREFIX}/lib/libfoxglove.a"
                 )
 
