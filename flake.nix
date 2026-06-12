@@ -4,12 +4,14 @@
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-22.11";
     nixpkgs-rust.url = "github:NixOS/nixpkgs/nixos-25.11";
+    nixpkgs-darwin.url = "github:NixOS/nixpkgs/nixos-25.11";
     flake-utils.url = "github:numtide/flake-utils";
   };
 
   outputs = {
     nixpkgs,
     nixpkgs-rust,
+    nixpkgs-darwin,
     flake-utils,
     ...
   }:
@@ -17,7 +19,12 @@
     ["x86_64-linux" "aarch64-linux" "aarch64-darwin"]
     (
       system: let
-        pkgs = import nixpkgs {
+        nixpkgsForSystem =
+          if builtins.match ".*-darwin" system != null
+          then nixpkgs-darwin
+          else nixpkgs;
+
+        pkgs = import nixpkgsForSystem {
           inherit system;
         };
 
@@ -42,7 +49,10 @@
               hash = "sha256-kpUsoMXoLfNvu8PYWYt5fP/9gu8/0XyJkd/qIL6p++Y=";
             };
 
-            cargoHash = "sha256-7IqUjwPEj9jwuN4Mz3J6zC8O7fSApZviJDZ6H9BT8xg=";
+            cargoHash =
+              if stdenv.isDarwin
+              then "sha256-UmmTvZdCZQobHHG2OzzpzwEO7zABIz7e3l0275AfZHc="
+              else "sha256-7IqUjwPEj9jwuN4Mz3J6zC8O7fSApZviJDZ6H9BT8xg=";
 
             nativeBuildInputs = [
               pkg-config
@@ -60,12 +70,19 @@
               glib
             ];
 
-            CC = "${clang}/bin/clang";
-            CXX = "${clang}/bin/clang++";
+            CC =
+              lib.optionalString stdenv.hostPlatform.isLinux
+                "${clang}/bin/clang";
+
+            CXX =
+              lib.optionalString stdenv.hostPlatform.isLinux
+                "${clang}/bin/clang++";
 
             LIBCLANG_PATH = "${lib.getLib llvmPackages.libclang}/lib";
 
-            AWS_LC_SYS_CFLAGS = "-Wno-restrict -Wno-error=restrict -Wno-error=stringop-overflow";
+            AWS_LC_SYS_CFLAGS =
+              lib.optionalString stdenv.hostPlatform.isLinux
+                "-Wno-restrict -Wno-error=restrict -Wno-error=stringop-overflow";
 
             BINDGEN_EXTRA_CLANG_ARGS =
               lib.optionalString stdenv.hostPlatform.isLinux
@@ -145,8 +162,18 @@
                 add_library(FoxgloveSdk::foxglove INTERFACE IMPORTED)
                 set_target_properties(FoxgloveSdk::foxglove PROPERTIES
                   INTERFACE_INCLUDE_DIRECTORIES "''${_FOXGLOVE_SDK_PREFIX}/include"
+                  INTERFACE_SYSTEM_INCLUDE_DIRECTORIES "''${_FOXGLOVE_SDK_PREFIX}/include"
+                  INTERFACE_SOURCES "''${FoxgloveSdk_SOURCES}"
                   INTERFACE_LINK_LIBRARIES "''${_FOXGLOVE_SDK_PREFIX}/lib/libfoxglove.a"
                 )
+
+               if(APPLE)
+                set_property(TARGET FoxgloveSdk::foxglove APPEND PROPERTY
+                  INTERFACE_LINK_LIBRARIES
+                  "-framework Security"
+                  "-framework CoreFoundation"
+                )
+              endif()
               endif()
               EOF
 
